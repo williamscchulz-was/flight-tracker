@@ -110,6 +110,8 @@ def filter_and_rank(flights):
             "stops": getattr(f, "stops", "?"),
             "departure": getattr(f, "departure", "?"),
             "arrival": getattr(f, "arrival", "?"),
+            "arrival_ahead": getattr(f, "arrival_time_ahead", "") or "",
+            "is_best": bool(getattr(f, "is_best", False)),
         })
     out.sort(key=lambda x: x["price"])
     return out
@@ -122,14 +124,32 @@ def fmt_hours(h):
     return f"{hh}h{mm:02d}m"
 
 
+def google_flights_url():
+    # Link de busca pro Google Flights — abre a mesma pesquisa, mostra todas as
+    # agências/sites onde comprar (Latam direto, Decolar, MaxMilhas, etc.)
+    return (
+        f"https://www.google.com/travel/flights?q="
+        f"Flights%20from%20{ORIGIN}%20to%20{DESTINATION}%20on%20{DEPARTURE_DATE}"
+    )
+
+
+def fmt_stops(n):
+    if n == 0:
+        return "direto"
+    if n == 1:
+        return "1 conexão"
+    return f"{n} conexões"
+
+
 def build_embed(matches, total_raw):
     footer = f"até {MAX_DURATION_HOURS}h • < R${int(MAX_PRICE_PER_ADULT)}/adulto • busca 1 ADT • grupo 2A+1I = ~×2.1"
     now_iso = datetime.now(timezone.utc).isoformat()
+    gf_link = f"\n\n[🔗 Abrir no Google Flights]({google_flights_url()})"
 
     if not matches:
         return {
             "title": "✈️ NVT → MEX • 30/10/26",
-            "description": f"❌ Nenhuma opção dentro dos critérios hoje\n*{total_raw} ofertas analisadas*",
+            "description": f"❌ Nenhuma opção dentro dos critérios hoje\n*{total_raw} ofertas analisadas*{gf_link}",
             "color": COLOR_NO_RESULTS,
             "footer": {"text": footer},
             "timestamp": now_iso,
@@ -137,18 +157,20 @@ def build_embed(matches, total_raw):
 
     fields = []
     for i, m in enumerate(matches[:TOP_N], 1):
+        star = "⭐ " if m["is_best"] else ""
+        ahead = f" ({m['arrival_ahead']})" if m["arrival_ahead"] else ""
         fields.append({
-            "name": f"{i}. R$ {m['price']:.0f}/adulto • {fmt_hours(m['duration_h'])}",
-            "value": f"**{m['airline']}**\n{m['departure']} → {m['arrival']} • {m['stops']}",
+            "name": f"{star}{i}. R$ {m['price']:.0f}/adulto • {fmt_hours(m['duration_h'])}",
+            "value": f"**{m['airline']}**\n{m['departure']} → {m['arrival']}{ahead} • {fmt_stops(m['stops'])}",
             "inline": False,
         })
 
     return {
         "title": "✈️ NVT → MEX • 30/10/26",
-        "description": f"✅ **{len(matches)} opções** abaixo do teto. Top {min(TOP_N, len(matches))}:",
+        "description": f"✅ **{len(matches)} opções** abaixo do teto. Top {min(TOP_N, len(matches))}:{gf_link}",
         "color": COLOR_SUCCESS,
         "fields": fields,
-        "footer": {"text": footer},
+        "footer": {"text": footer + " • ⭐ = melhor opção segundo o Google"},
         "timestamp": now_iso,
     }
 
