@@ -1,11 +1,11 @@
 # Flight Tracker — NVT → MEX
 
-Agente diário que checa voos NVT → Cidade do México (30/10/2026) via Google Flights, filtra por duração e preço, manda resumo no Discord. Roda via Claude Code Routines (cloud da Anthropic), zero infra local.
+Agente diário que checa voos NVT → Cidade do México (30/10/2026) via Google Flights, filtra por duração e preço, manda resumo no Discord. Pode rodar local (Windows Task Scheduler) ou na cloud (Claude Code Routines).
 
 ## Stack
 
 - **Data**: `fast-flights` (consulta Google Flights, sem API key)
-- **Runtime**: Claude Code Routines (cloud, agendado)
+- **Runtime**: Windows Task Scheduler (local) **ou** Claude Code Routines (cloud)
 - **Notificação**: Discord webhook (zero setup de bot)
 
 ## Parâmetros (no `flight_check.py`)
@@ -37,19 +37,36 @@ cd flight-tracker
 git add . && git commit -m "initial" && git push
 ```
 
-### 3. Teste local
+### 3. Setup local (Windows)
 
 ```powershell
-python -m venv .venv ; .venv\Scripts\activate
-pip install -r requirements.txt
+python -m venv .venv
+.\.venv\Scripts\pip install -r requirements.txt
 
-$env:DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/..."
-python flight_check.py
+Copy-Item .env.example .env
+# edita .env e cola a webhook real em DISCORD_WEBHOOK_URL
+
+.\run.ps1
 ```
 
-Se o embed chegou no canal, tá funcionando.
+Se o embed chegou no canal, tá funcionando. `run.ps1` carrega `.env` automaticamente e usa o python do venv.
 
-### 4. Claude Code Routine
+### 4. Rodar agendado via Task Scheduler (Windows)
+
+```powershell
+# Cria task que roda todo dia às 08:00
+$action  = New-ScheduledTaskAction -Execute "powershell.exe" `
+            -Argument "-NoProfile -ExecutionPolicy Bypass -File C:\projetos\flight-tracker\run.ps1" `
+            -WorkingDirectory "C:\projetos\flight-tracker"
+$trigger = New-ScheduledTaskTrigger -Daily -At 8:00am
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable
+Register-ScheduledTask -TaskName "Flight Tracker NVT-MEX" `
+    -Action $action -Trigger $trigger -Settings $settings -Description "Daily NVT->MEX flight check"
+```
+
+Pra testar sem esperar: `Start-ScheduledTask -TaskName "Flight Tracker NVT-MEX"`. Status: `Get-ScheduledTaskInfo -TaskName "Flight Tracker NVT-MEX"` — `LastTaskResult: 0` = ok, qualquer outra coisa = erro (vai postar embed vermelho no Discord também, se a webhook tiver válida).
+
+### 5. Alternativa: Claude Code Routine (cloud)
 
 1. `claude.ai/code/routines` → **New routine** → **Remote**.
 2. Conecta o repo `flight-tracker`.
