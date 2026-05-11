@@ -13,6 +13,8 @@ if (Test-Path $envFile) {
     }
 }
 
+$env:PYTHONIOENCODING = "utf-8"
+
 $python = Join-Path $scriptDir ".venv\Scripts\python.exe"
 if (-not (Test-Path $python)) {
     Write-Error "venv not found at $python. Run: python -m venv .venv ; .\.venv\Scripts\pip install -r requirements.txt"
