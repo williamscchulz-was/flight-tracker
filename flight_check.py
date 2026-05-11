@@ -89,7 +89,7 @@ def fetch_flights():
             infants_in_seat=0,
             infants_on_lap=SEARCH_INFANTS_ON_LAP,
         ),
-        fetch_mode="fallback",
+        fetch_mode="local",
     )
     return result.flights
 
