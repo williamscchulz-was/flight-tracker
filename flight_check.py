@@ -17,6 +17,8 @@ DESTINATION = "MEX"
 DEPARTURE_DATE = "2026-10-30"
 MAX_DURATION_HOURS = 16
 MAX_PRICE_PER_ADULT = 4000.0
+# Abaixo disso = alerta de pechincha (pinga @everyone, embed laranja, 🔥 nos cards)
+DEAL_PRICE_THRESHOLD = 3000.0
 TOP_N = 5
 
 # Busca com 1 adulto → preço puro de adulto.
@@ -28,6 +30,7 @@ SEARCH_INFANTS_ON_LAP = 0
 COLOR_SUCCESS = 0x57F287
 COLOR_NO_RESULTS = 0xFEE75C
 COLOR_ERROR = 0xED4245
+COLOR_DEAL = 0xFF6B00  # laranja-fogo pra alerta de pechincha
 
 # ---------- ENV ----------
 DISCORD_WEBHOOK_URL = os.environ["DISCORD_WEBHOOK_URL"]
@@ -155,30 +158,48 @@ def build_embed(matches, total_raw):
             "timestamp": now_iso,
         }
 
+    has_deal = any(m["price"] < DEAL_PRICE_THRESHOLD for m in matches[:TOP_N])
+
     fields = []
     for i, m in enumerate(matches[:TOP_N], 1):
         star = "⭐ " if m["is_best"] else ""
+        deal = "🔥 " if m["price"] < DEAL_PRICE_THRESHOLD else ""
         ahead = f" ({m['arrival_ahead']})" if m["arrival_ahead"] else ""
         fields.append({
-            "name": f"{star}{i}. R$ {m['price']:.0f}/adulto • {fmt_hours(m['duration_h'])}",
+            "name": f"{deal}{star}{i}. R$ {m['price']:.0f}/adulto • {fmt_hours(m['duration_h'])}",
             "value": f"**{m['airline']}**\n{m['departure']} → {m['arrival']}{ahead} • {fmt_stops(m['stops'])}",
             "inline": False,
         })
 
+    if has_deal:
+        title = "🔥 PECHINCHA! ✈️ NVT → MEX • 30/10/26"
+        desc = f"🔥 **{sum(1 for m in matches[:TOP_N] if m['price'] < DEAL_PRICE_THRESHOLD)} opção(ões) abaixo de R${int(DEAL_PRICE_THRESHOLD)}!**\nTop {min(TOP_N, len(matches))}:{gf_link}"
+        color = COLOR_DEAL
+    else:
+        title = "✈️ NVT → MEX • 30/10/26"
+        desc = f"✅ **{len(matches)} opções** abaixo do teto. Top {min(TOP_N, len(matches))}:{gf_link}"
+        color = COLOR_SUCCESS
+
     return {
-        "title": "✈️ NVT → MEX • 30/10/26",
-        "description": f"✅ **{len(matches)} opções** abaixo do teto. Top {min(TOP_N, len(matches))}:{gf_link}",
-        "color": COLOR_SUCCESS,
+        "title": title,
+        "description": desc,
+        "color": color,
         "fields": fields,
-        "footer": {"text": footer + " • ⭐ = melhor opção segundo o Google"},
+        "footer": {"text": footer + " • ⭐ Google best • 🔥 < R$" + str(int(DEAL_PRICE_THRESHOLD))},
         "timestamp": now_iso,
     }
 
 
-def send_discord(embed):
+def send_discord(embed, alert=False):
+    payload = {"embeds": [embed]}
+    if alert:
+        # @everyone dispara notificação push no Discord (celular + desktop).
+        # allowed_mentions garante que o ping passa mesmo com webhook.
+        payload["content"] = "@everyone 🔥 PECHINCHA — voo abaixo do teto!"
+        payload["allowed_mentions"] = {"parse": ["everyone"]}
     r = requests.post(
         DISCORD_WEBHOOK_URL,
-        json={"embeds": [embed]},
+        json=payload,
         timeout=30,
     )
     r.raise_for_status()
@@ -201,9 +222,10 @@ def main():
     print(f"Raw flights: {len(flights)}")
     matches = filter_and_rank(flights)
     print(f"After filter: {len(matches)}")
+    has_deal = any(m["price"] < DEAL_PRICE_THRESHOLD for m in matches[:TOP_N])
     embed = build_embed(matches, total_raw=len(flights))
-    send_discord(embed)
-    print("Discord delivered.")
+    send_discord(embed, alert=has_deal)
+    print(f"Discord delivered.{' DEAL!' if has_deal else ''}")
 
 
 if __name__ == "__main__":
